@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vitalyx | Verified Health, Fitness &amp; Nutrition Supplements</title>
+  <meta name="description" content="Shop 100% authentic whey protein, mass gainers, vitamins, omega-3 and Ayurvedic supplements, sourced direct from brands and lab tested.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="home">
+  <div id="header"></div>
+
+  <main class="container">
+    <!-- Hero slider -->
+    <section class="hero" aria-label="Featured offers">
+      <div class="slide s1">
+        <div>
+          <span class="eyebrow">✔ 100% Authentic · Lab Tested</span>
+          <h1>Fuel your gains with verified whey</h1>
+          <p>Up to 40% off top protein brands. Scan any batch code to see its lab report.</p>
+          <a href="products.html?cat=protein" class="btn btn-light btn-lg">Shop Protein →</a>
+        </div>
+        <div class="slide-art" data-art="1,3"></div>
+      </div>
+      <div class="slide s2">
+        <div>
+          <span class="eyebrow">⚡ Mega Fitness Sale</span>
+          <h1>Pre-workouts &amp; creatine from ₹799</h1>
+          <p>Clinically dosed and fully transparent labels, with no proprietary blends.</p>
+          <a href="products.html?cat=preworkout" class="btn btn-light btn-lg">Grab the Deal →</a>
+        </div>
+        <div class="slide-art" data-art="7,8"></div>
+      </div>
+      <div class="slide s3">
+        <div>
+          <span class="eyebrow">🛡️ Wellness Week</span>
+          <h1>Daily vitamins for a stronger you</h1>
+          <p>Multivitamins, omega-3 and Ayurvedic herbs. Buy 2, get an extra 10% off.</p>
+          <a href="products.html?goal=wellness" class="btn btn-light btn-lg">Explore Wellness →</a>
+        </div>
+        <div class="slide-art" data-art="13,10"></div>
+      </div>
+      <button class="hero-prev" aria-label="Previous slide">‹</button>
+      <button class="hero-next" aria-label="Next slide">›</button>
+      <div class="dots"></div>
+    </section>
+
+    <!-- USPs -->
+    <div class="usp">
+      <div><span class="ico">✔</span><span><b>Genuine Products</b><small>Direct from brands</small></span></div>
+      <div><span class="ico">🔬</span><span><b>Lab Reports</b><small>For every batch</small></span></div>
+      <div><span class="ico">💰</span><span><b>5% VitaCash</b><small>On every order</small></span></div>
+      <div><span class="ico">🩺</span><span><b>Free Consult</b><small>With certified dietitians</small></span></div>
+    </div>
+
+    <!-- Categories -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Shop by Category</h2><p>Everything for fitness, health and wellness</p></div><a href="products.html">View all →</a></div>
+      <div class="cat-grid" id="catGrid"></div>
+    </section>
+
+    <!-- Featured -->
+    <section class="block">
+      <div class="sec-head">
+        <div><h2>Top Picks for You</h2><p>Picked by our nutrition experts</p></div>
+        <div class="tabs">
+          <button class="tab" data-tab="best">Bestsellers</button>
+          <button class="tab" data-tab="deals">Top Deals</button>
+          <button class="tab" data-tab="top">Top Rated</button>
+        </div>
+      </div>
+      <div class="grid" id="featured"></div>
+    </section>
+
+    <!-- Shop by goal -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Shop by Goal</h2><p>Tell us what you want to achieve and we'll match the right supplements</p></div></div>
+      <div class="goal-grid" id="goalGrid"></div>
+    </section>
+
+    <!-- Promos -->
+    <section class="block promo-grid">
+      <div class="promo p1"><div><h3>First order?<br>Get 10% off</h3><p>Use code at checkout</p></div><span><span class="code">WELCOME10</span></span></div>
+      <div class="promo p2"><div><h3>Flat 15% off<br>sports nutrition</h3><p>Creatine, BCAA &amp; electrolytes</p></div><span><span class="code">FIT15</span></span></div>
+      <div class="promo p3"><div><h3>Vitalyx Select<br>Membership</h3><p>Extra 5% off, free shipping &amp; priority support</p></div><span><a href="#" class="btn btn-light">Join for ₹199/yr</a></span></div>
+    </section>
+
+    <!-- Protein row -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Proteins &amp; Gainers</h2><p>Whey, plant and mass gainers you can trust</p></div><a href="products.html?cat=protein">See all →</a></div>
+      <div class="row-scroll" id="proteinRow"></div>
+    </section>
+
+    <!-- Authenticity -->
+    <section class="block authentic" id="authentic">
+      <div>
+        <h2>Our Authenticity Promise</h2>
+        <p>Fake supplements are a real problem in India. We take four steps so that every product we sell is genuine, fresh and exactly what the label says.</p>
+        <div class="auth-steps">
+          <div><span class="n">1</span><b>Direct Sourcing</b><small>Only from brands or their authorised importers, with invoices on record.</small></div>
+          <div><span class="n">2</span><b>Batch Lab Testing</b><small>An NABL-accredited lab checks every batch for protein content and heavy metals.</small></div>
+          <div><span class="n">3</span><b>Climate-Controlled</b><small>Products are stored at 18–25 °C so they don't degrade.</small></div>
+          <div><span class="n">4</span><b>Tamper-Proof Seal</b><small>A holographic seal with a unique QR code on every pack.</small></div>
+        </div>
+      </div>
+      <div class="verify-box">
+        <h3>🔍 Verify your product</h3>
+        <p>Enter the batch code printed under the holographic seal.</p>
+        <form id="verifyForm">
+          <input id="verifyCode" placeholder="e.g. VX7Q2K9M" aria-label="Batch code" required>
+          <button class="btn btn-primary">Verify</button>
+        </form>
+        <div class="verify-result" id="verifyResult" aria-live="polite"></div>
+        <div class="cert-row"><span>FSSAI</span><span>GMP</span><span>ISO 22000</span><span>HACCP</span><span>NABL Lab</span></div>
+      </div>
+    </section>
+
+    <!-- Wellness row -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Vitamins &amp; Wellness</h2><p>Daily essentials for immunity, energy and longevity</p></div><a href="products.html?goal=wellness">See all →</a></div>
+      <div class="row-scroll" id="wellnessRow"></div>
+    </section>
+
+    <!-- Brands -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Authorised Brands</h2><p>Every brand we stock is verified, with partnership agreements in place</p></div></div>
+      <div class="brand-row" id="brandRow"></div>
+    </section>
+
+    <!-- Consult -->
+    <section class="block consult">
+      <div><h3>🩺 Not sure what to take?</h3><p>Book a free 15-minute call with a certified dietitian for a supplement plan built around your goals.</p></div>
+      <div class="consult-actions">
+        <a href="#" class="btn btn-wa btn-lg" data-wa>💬 WhatsApp Us</a>
+        <a href="#" class="btn btn-accent btn-lg" data-call>📞 Call Now</a>
+      </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Loved by 2 Million+ Fitness Enthusiasts</h2><p>Real reviews from verified buyers</p></div></div>
+      <div class="testi-grid" id="testimonials"></div>
+    </section>
+
+    <!-- Articles -->
+    <section class="block">
+      <div class="sec-head"><div><h2>Learn Before You Buy</h2><p>Science-backed guides from our nutrition team</p></div><a href="#">All articles →</a></div>
+      <div class="article-grid" id="articles"></div>
+    </section>
+
+    <!-- Newsletter -->
+    <section class="block newsletter">
+      <div><h3>Get 10% off your first order</h3><p>Join for expert tips, early deals and new launches.</p></div>
+      <form id="newsletter">
+        <input type="email" placeholder="Your email address" aria-label="Email" required>
+        <button class="btn btn-accent">Subscribe</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="footer"></div>
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

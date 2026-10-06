@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shop Supplements | Vitalyx</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="listing">
+  <div id="header"></div>
+
+  <main class="container">
+    <nav class="crumbs"><a href="index.html">Home</a> › <span id="crumb">All Products</span></nav>
+
+    <div class="listing">
+      <aside class="card filters">
+        <h3>Filters <a href="products.html">Clear all</a></h3>
+        <div class="fgroup"><h4>Category</h4><div id="fCats"></div></div>
+        <div class="fgroup"><h4>Brand</h4><div id="fBrands"></div></div>
+        <div class="fgroup"><h4>Goal</h4><select id="fGoal" aria-label="Goal"></select></div>
+        <div class="fgroup">
+          <h4>Max Price: <span id="fPriceVal">₹6,000</span></h4>
+          <input type="range" id="fPrice" min="300" max="6000" step="100" value="6000" aria-label="Maximum price">
+          <div class="price-labels"><span>₹300</span><span>₹6,000</span></div>
+        </div>
+        <div class="fgroup"><h4>Customer Rating</h4>
+          <label><input type="radio" name="rating" value="0" checked> Any</label>
+          <label><input type="radio" name="rating" value="4.5"> 4.5★ &amp; above</label>
+          <label><input type="radio" name="rating" value="4"> 4★ &amp; above</label>
+        </div>
+        <div class="fgroup"><h4>Assurance</h4>
+          <label><input type="checkbox" checked disabled> ✔ Authentic only <small>always</small></label>
+        </div>
+      </aside>
+
+      <section>
+        <div class="list-bar">
+          <div><h1 id="listTitle">All Products</h1><span id="count"></span></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost" id="filterToggle">⚙ Filters</button>
+            <label>Sort by
+              <select id="sort">
+                <option value="popular">Popularity</option>
+                <option value="low">Price: Low to High</option>
+                <option value="high">Price: High to Low</option>
+                <option value="rating">Customer Rating</option>
+                <option value="discount">Discount</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="footer"></div>
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
