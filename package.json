@@ -1,0 +1,21 @@
+{
+  "name": "vitalyx-store",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vitalyx supplements store with admin dashboard",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch-path=server --watch-path=.env server/server.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^6.10.0",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -3,8 +3,13 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const inr = n => "₹" + Number(n).toLocaleString("en-IN");
 const off = p => Math.round((1 - p.price / p.mrp) * 100);
-const catName = id => (CATEGORIES.find(c => c.id === id) || {}).name || id;
+// Bigger packs cost more — same rule the product page uses for its price
+const sizeMul = (p, size) => 1 + Math.max(0, p.sizes.indexOf(size)) * 0.85;
+const unitPrice = (p, size) => Math.round(p.price * sizeMul(p, size));
+const unitMrp = (p, size) => Math.round(p.mrp * sizeMul(p, size));
+const catName =id => (CATEGORIES.find(c => c.id === id) || {}).name || id;
 const params = new URLSearchParams(location.search);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
@@ -13,6 +18,7 @@ const store = {
 
 /* ===== Product artwork (SVG tub / bottle) ===== */
 function productArt(p, size = 220) {
+  if (p.image) return `<img src="${API_BASE}${p.image}" width="${size}" height="${size}" alt="${p.name}" loading="lazy" style="object-fit:contain">`;
   const shortName = p.name.split(" ").slice(0, 3).join(" ");
   const isBottle = ["vitamins", "omega", "ayurveda", "weight"].includes(p.category);
   const brand = p.brand.toUpperCase();
@@ -71,7 +77,10 @@ function productCard(p) {
       <div class="pc-rating"><b>${p.rating} ★</b> <span>(${p.reviews.toLocaleString("en-IN")})</span></div>
       <div class="pc-price"><b>${inr(p.price)}</b> <s>${inr(p.mrp)}</s> <em>${off(p)}% off</em></div>
       <div class="pc-loyalty">Earn ${inr(Math.round(p.price * 0.05))} VitaCash</div>
-      <button class="btn btn-primary btn-block" data-add="${p.id}">Add to Cart</button>
+      <div class="pc-actions">
+        <button class="btn btn-ghost" data-add="${p.id}">Add to Cart</button>
+        <button class="btn btn-primary" data-book="${p.id}">Book Now</button>
+      </div>
     </div>
   </article>`;
 }
@@ -109,6 +118,222 @@ function toast(html) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2400);
 }
 
+/* ===== Order form: "Book Now" (single product) & cart checkout — sends the order to WhatsApp ===== */
+function leadModal() {
+  let m = $("#leadModal");
+  if (m) return m;
+  m = document.createElement("div");
+  m.id = "leadModal"; m.className = "modal";
+  m.innerHTML = `<div class="modal-box card" role="dialog" aria-modal="true" aria-labelledby="leadTitle">
+    <button class="modal-x" data-close aria-label="Close">✕</button>
+    <div id="leadStep">
+      <h3 id="leadTitle"></h3>
+      <p class="modal-sub">Fill in your details and our team will call you to confirm your order.</p>
+      <form id="leadForm" class="lead-form">
+        <div id="leadItems" class="lead-items"></div>
+        <label>Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
+        <label>Email <small class="muted">(from your account)</small><input name="email" type="email" readonly tabindex="-1"></label>
+        <label>Mobile Number<input name="phone" type="tel" required autocomplete="tel" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" placeholder="10-digit mobile number" title="Enter a valid 10-digit mobile number"></label>
+        <label>Address<textarea name="address" required rows="3" autocomplete="street-address" placeholder="House no, street, city, pincode"></textarea></label>
+        <fieldset id="bookFields" class="lead-book">
+          <label>Product<select name="product" required>${PRODUCTS.map(x => `<option value="${x.id}">${x.brand} ${x.name} — ${inr(x.price)}</option>`).join("")}</select></label>
+          <div class="lead-variant">
+            <label>Size / Weight<select name="size" required></select></label>
+            <label id="flavourField">Flavour<select name="flavour" required></select></label>
+          </div>
+          <div class="lead-qty">
+            <label>Quantity
+              <span class="qty-box"><button type="button" data-q="-1" aria-label="Decrease quantity">−</button><input name="qty" type="number" min="1" max="10" value="1" required><button type="button" data-q="1" aria-label="Increase quantity">+</button></span>
+            </label>
+            <div class="lead-total">Total<b id="leadTotal"></b><small>Free delivery above ₹999</small></div>
+          </div>
+        </fieldset>
+        <fieldset class="pay-methods">
+          <legend>Payment method</legend>
+          <label class="pay-opt"><input type="radio" name="payMethod" value="cod" checked><span><b>💵 Cash on Delivery</b><small>Pay in cash when your order arrives</small></span></label>
+          <label class="pay-opt"><input type="radio" name="payMethod" value="upi"><span><b>📱 UPI — pay now</b><small>Scan a QR with GPay, PhonePe, Paytm or any UPI app</small></span></label>
+        </fieldset>
+        <p id="leadError" class="lead-error" role="alert" hidden></p>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">Place Order</button>
+      </form>
+    </div>
+    <div id="payStep" class="pay-step" hidden>
+      <h3>Pay with UPI</h3>
+      <p class="modal-sub">Scan the QR with any UPI app and pay the amount below.</p>
+      <div class="pay-amount">Amount to pay<b id="payAmount"></b><small id="payBreakup"></small></div>
+      <div class="pay-qr" id="payQr"></div>
+      <div class="pay-apps"><span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span></div>
+      <p class="pay-demo">🧪 Demo QR — no real money is charged. Tap <b>I have paid</b> to complete the test payment.</p>
+      <p class="pay-timer" id="payTimer"></p>
+      <p id="payError" class="lead-error" role="alert" hidden></p>
+      <button class="btn btn-primary btn-block btn-lg" id="payDone" type="button">✅ I have paid</button>
+      <button class="btn btn-ghost btn-block" id="payBack" type="button">← Change payment method</button>
+    </div>
+    <div id="thanksStep" class="thanks" hidden>
+      <div class="thanks-ic">✅</div>
+      <h3>Thank you!</h3>
+      <p id="thanksOrder" class="thanks-order"></p>
+      <p id="thanksPay" class="thanks-pay"></p>
+      <p>Your order has been received. Our team will contact you shortly to confirm it.</p>
+      <a class="btn btn-ghost" href="account.html#orders" style="margin-bottom:10px">📦 Track your order</a>
+      <button class="btn btn-primary" data-close>Continue Shopping</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const qtyIn = $("[name=qty]", m);
+  m.addEventListener("click", e => {
+    if (e.target === m || e.target.closest("[data-close]")) return closeLeadForm();
+    const b = e.target.closest("[data-q]"); if (!b) return;
+    qtyIn.value = Math.min(10, Math.max(1, (+qtyIn.value || 1) + +b.dataset.q)); updateLeadTotal();
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeLeadForm(); });
+  $("[name=product]", m).addEventListener("change", () => fillVariants(m));
+  $("#leadForm", m).addEventListener("input", updateLeadTotal);
+  const f = $("#leadForm", m), err = $("#leadError", m);
+  const payload = () => {
+    const d = Object.fromEntries(new FormData(f)), o = m._order;
+    const items = o.mode === "book"
+      ? [{ id: +d.product, size: d.size, flavour: d.flavour || "—", qty: +d.qty }]
+      : o.lines.map(l => ({ id: l.p.id, size: l.size, flavour: l.flavour, qty: l.qty }));
+    return { source: o.mode, customer: { name: d.name, phone: d.phone, address: d.address }, items, coupon: o.coupon || "" };
+  };
+  const post = async (path, body) => {
+    let r;
+    try { r = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) }); }
+    catch { throw new Error(`Network problem. Please try again or call ${CONTACT.display}`); }
+    const res = await r.json().catch(() => ({}));
+    if (r.status === 401) { CURRENT_USER = null; closeLeadForm(); requireLogin(); throw Object.assign(new Error(""), { silent: true }); }
+    if (!r.ok) throw new Error(res.error || "Could not place your order");
+    return res;
+  };
+  const showStep = id => ["leadStep", "payStep", "thanksStep"].forEach(k => $("#" + k, m).hidden = k !== id);
+  const done = res => {
+    clearInterval(m._timer);
+    $("#thanksOrder", m).innerHTML = `Order <b>#${esc(res.orderNo)}</b> · Total <b>${inr(res.total)}</b>`;
+    $("#thanksPay", m).innerHTML = res.payment.method === "upi"
+      ? `✅ Paid by UPI · Txn ID <b>${esc(res.payment.txnId)}</b>`
+      : `💵 Please keep <b>${inr(res.total)}</b> ready to pay in cash on delivery.`;
+    showStep("thanksStep");
+    f.reset();
+    m._order.onDone?.();
+  };
+  const busy = (btn, on, label) => { btn.disabled = on; if (label) btn.textContent = label; };
+
+  f.addEventListener("change", e => {
+    if (e.target.name === "payMethod") $("[type=submit]", f).textContent = e.target.value === "upi" ? "Continue to Pay" : "Place Order";
+  });
+  f.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = $("[type=submit]", f), method = f.payMethod.value;
+    err.hidden = true;
+    busy(btn, true, method === "upi" ? "Preparing payment…" : "Placing order…");
+    try {
+      if (method === "cod") return done(await post("/api/orders", { ...payload(), payment: { method: "cod" } }));
+      // UPI: get the final amount + QR from the server, then show the payment screen
+      const q = await post("/api/orders/quote", payload());
+      m._pay = { token: q.payToken, body: payload() };
+      $("#payAmount", m).textContent = inr(q.total);
+      $("#payBreakup", m).textContent = `Items ${inr(q.subtotal)}${q.discount ? ` − coupon ${inr(q.discount)}` : ""} + delivery ${q.shipping ? inr(q.shipping) : "FREE"} · Ref ${q.ref}`;
+      $("#payQr", m).innerHTML = q.qrSvg;
+      $("#payError", m).hidden = true;
+      let left = q.expiresIn;
+      const tick = () => {
+        $("#payTimer", m).textContent = left > 0 ? `QR valid for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "QR expired — go back and try again";
+        $("#payDone", m).disabled = left <= 0;
+        left--;
+      };
+      clearInterval(m._timer); tick(); m._timer = setInterval(tick, 1000);
+      showStep("payStep");
+    } catch (ex) {
+      if (!ex.silent) { err.textContent = ex.message; err.hidden = false; }
+    } finally {
+      busy(btn, false, method === "upi" ? "Continue to Pay" : "Place Order");
+    }
+  });
+  $("#payBack", m).addEventListener("click", () => { clearInterval(m._timer); showStep("leadStep"); });
+  $("#payDone", m).addEventListener("click", async () => {
+    const btn = $("#payDone", m), perr = $("#payError", m);
+    perr.hidden = true;
+    busy(btn, true, "Verifying payment…");
+    try {
+      await new Promise(r => setTimeout(r, 1200)); // demo: pretend the bank is confirming
+      done(await post("/api/orders", { ...m._pay.body, payment: { method: "upi", payToken: m._pay.token } }));
+    } catch (ex) {
+      if (!ex.silent) { perr.textContent = ex.message; perr.hidden = false; }
+    } finally {
+      busy(btn, false, "✅ I have paid");
+    }
+  });
+  return m;
+}
+function showLeadModal(m, order) {
+  m._order = order;
+  const book = order.mode === "book";
+  $("#leadTitle", m).textContent = book ? "Book this product" : "Delivery details";
+  $("#bookFields", m).hidden = !book;
+  $("#bookFields", m).disabled = !book;
+  $("#leadItems", m).hidden = book;
+  $("#leadStep", m).hidden = false; $("#payStep", m).hidden = true; $("#thanksStep", m).hidden = true; $("#leadError", m).hidden = true;
+  clearInterval(m._timer);
+  const f = $("#leadForm", m), u = CURRENT_USER;
+  f.email.value = u.email;
+  if (!f.name.value) f.name.value = u.name;
+  if (!f.phone.value) f.phone.value = u.phone;
+  if (!f.address.value) f.address.value = u.address || "";
+  m.classList.add("open"); document.body.style.overflow = "hidden";
+  setTimeout(() => $("[name=name]", m).focus(), 50);
+}
+// "Book Now" — order a single product directly
+function openLeadForm(id, qty = 1, size, flavour) {
+  if (!requireLogin()) return;
+  const p = PRODUCTS.find(x => x.id === id);
+  const m = leadModal();
+  $("[name=product]", m).value = id;
+  $("[name=qty]", m).value = qty;
+  fillVariants(m, size || p.sizes[0], flavour || p.flavours[0]);
+  showLeadModal(m, { mode: "book" });
+}
+// Fill Size & Flavour options for the product selected in the form
+function fillVariants(m, size, flavour) {
+  const p = PRODUCTS.find(x => x.id === +$("[name=product]", m).value);
+  const sizeSel = $("[name=size]", m), flavSel = $("[name=flavour]", m);
+  sizeSel.innerHTML = p.sizes.map(s => `<option value="${s}">${s} — ${inr(unitPrice(p, s))}</option>`).join("");
+  sizeSel.value = size || p.sizes[0];
+  const hasFlavour = p.flavours[0] !== "—";
+  $("#flavourField", m).hidden = !hasFlavour;
+  flavSel.disabled = !hasFlavour;
+  flavSel.innerHTML = p.flavours.map(f => `<option value="${f}">${f}</option>`).join("");
+  flavSel.value = flavour || p.flavours[0];
+  updateLeadTotal();
+}
+// Cart "Proceed to Checkout" — order everything in the cart
+function openCheckoutForm(lines, totals, onDone) {
+  if (!requireLogin()) return;
+  const m = leadModal();
+  $("#leadItems", m).innerHTML = `<b>Your order (${lines.reduce((a, l) => a + l.qty, 0)} items)</b>
+    ${lines.map(l => `<div><span>${l.p.name} × ${l.qty}<small>${l.size}${l.flavour !== "—" ? " · " + l.flavour : ""}</small></span><span>${inr(unitPrice(l.p, l.size) * l.qty)}</span></div>`).join("")}
+    <div class="li-tot"><span>To Pay</span><span>${totals.payable}</span></div>`;
+  showLeadModal(m, { mode: "cart", lines, coupon: totals.coupon, onDone });
+}
+// Orders need an account: send guests to the login page, then bring them back here
+function requireLogin() {
+  if (CURRENT_USER) return true;
+  toast("Please log in or sign up to place your order");
+  setTimeout(() => { location.href = `account.html?next=${encodeURIComponent((location.pathname.split("/").pop() || "index.html") + location.search)}`; }, 900);
+  return false;
+}
+function updateLeadTotal() {
+  const m = $("#leadModal"), q = $("[name=qty]", m);
+  const p = PRODUCTS.find(x => x.id === +$("[name=product]", m).value);
+  const n = Math.min(10, Math.max(1, Math.floor(+q.value) || 1));
+  $("#leadTotal", m).textContent = inr(unitPrice(p, $("[name=size]", m).value) * n);
+}
+function closeLeadForm() {
+  const m = $("#leadModal");
+  if (m) clearInterval(m._timer);
+  if (m && m.classList.contains("open")) { m.classList.remove("open"); document.body.style.overflow = ""; }
+}
+
 /* ===== Header & footer ===== */
 function renderChrome() {
   const header = `
@@ -128,7 +353,7 @@ function renderChrome() {
         <button aria-label="Search">🔍</button>
       </form>
       <nav class="header-actions">
-        <a href="#" class="ha hide-sm"><span>👤</span><small>Login</small></a>
+        <a href="account.html" class="ha"><span>👤</span><small>${CURRENT_USER ? esc(CURRENT_USER.name.split(" ")[0]) : "Login"}</small></a>
         <a href="products.html?wish=1" class="ha hide-sm"><span>♡</span><small>Wishlist</small></a>
         <a href="cart.html" class="ha"><span>🛒<i class="cart-count" hidden>0</i></span><small>Cart</small></a>
       </nav>
@@ -161,7 +386,7 @@ function renderChrome() {
       </div>
       <div><h4>Shop</h4>${CATEGORIES.slice(0, 6).map(c => `<a href="products.html?cat=${c.id}">${c.name}</a>`).join("")}</div>
       <div><h4>Company</h4><a href="#">About Us</a><a href="index.html#authentic">Authenticity Promise</a><a href="#">Careers</a><a href="#">Blog</a><a href="#">Contact</a></div>
-      <div><h4>Help</h4><a href="${telLink}">📞 Call ${CONTACT.display}</a><a href="${waLink()}" target="_blank" rel="noopener">💬 Chat on WhatsApp</a><a href="#">Track Order</a><a href="#">Returns & Refunds</a><a href="#">Shipping Policy</a><a href="#">FAQs</a><a href="#">Verify Product</a></div>
+      <div><h4>Help</h4><a href="${telLink}">📞 Call ${CONTACT.display}</a><a href="${waLink()}" target="_blank" rel="noopener">💬 Chat on WhatsApp</a><a href="account.html#orders">Track Order</a><a href="#">Returns & Refunds</a><a href="#">Shipping Policy</a><a href="#">FAQs</a><a href="#">Verify Product</a></div>
     </div>
     <div class="container footer-bottom">
       <span>© ${new Date().getFullYear()} Vitalyx Nutrition. A demo storefront — all brands and products are fictional.</span>
@@ -185,6 +410,9 @@ function renderChrome() {
   $$("[data-wa]").forEach(a => { a.href = waLink("Hi Vitalyx! I'd like a free dietitian consultation."); a.target = "_blank"; a.rel = "noopener"; });
   $$("[data-call]").forEach(a => a.href = telLink);
   $("#menuBtn").addEventListener("click", () => $("#catnav").classList.toggle("open"));
+  const hdr = $(".site-header");
+  const onScroll = () => hdr.classList.toggle("scrolled", scrollY > 40);
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
   updateCartCount();
 }
 
@@ -192,6 +420,8 @@ function renderChrome() {
 document.addEventListener("click", e => {
   const add = e.target.closest("[data-add]");
   if (add) { e.preventDefault(); addToCart(+add.dataset.add); }
+  const book = e.target.closest("[data-book]");
+  if (book) { e.preventDefault(); openLeadForm(+book.dataset.book); }
   const w = e.target.closest("[data-wish]");
   if (w) { e.preventDefault(); toggleWish(+w.dataset.wish); }
 });
@@ -199,7 +429,7 @@ document.addEventListener("click", e => {
 /* ===== Home page ===== */
 function initHome() {
   $$("[data-art]").forEach(el => {
-    el.innerHTML = el.dataset.art.split(",").map(id => productArt(PRODUCTS.find(p => p.id === +id), 200)).join("");
+    el.innerHTML = el.dataset.art.split(",").map(id => PRODUCTS.find(p => p.id === +id)).filter(Boolean).map(p => productArt(p, 200)).join("");
   });
 
   // Hero slider
@@ -304,7 +534,8 @@ function initListing() {
   $("#fCats").innerHTML = CATEGORIES.map(c => `
     <label><input type="checkbox" value="${c.id}" ${state.cats.includes(c.id) ? "checked" : ""}> ${c.name}
     <small>${PRODUCTS.filter(p => p.category === c.id).length}</small></label>`).join("");
-  $("#fBrands").innerHTML = BRANDS.map(b => `
+  const brandNames = [...new Set([...BRANDS.map(b => b.name), ...PRODUCTS.map(p => p.brand)])].filter(n => PRODUCTS.some(p => p.brand === n));
+  $("#fBrands").innerHTML = brandNames.map(name => ({ name })).map(b => `
     <label><input type="checkbox" value="${b.name}" ${state.brands.includes(b.name) ? "checked" : ""}> ${b.name}
     <small>${PRODUCTS.filter(p => p.brand === b.name).length}</small></label>`).join("");
   $("#fGoal").innerHTML = `<option value="">Any goal</option>` + GOALS.map(g => `<option value="${g.id}" ${g.id === state.goal ? "selected" : ""}>${g.name}</option>`).join("");
@@ -345,6 +576,7 @@ function initListing() {
 /* ===== Product detail page ===== */
 function initProduct() {
   const p = PRODUCTS.find(x => x.id === +params.get("id")) || PRODUCTS[0];
+  if (!p) { $("#pdp").innerHTML = `<div class="empty card"><h2>Product not found</h2><a class="btn btn-primary" href="products.html">Browse products</a></div>`; return; }
   document.title = `${p.name} | ${p.brand} | Vitalyx`;
   let size = p.sizes[0], flavour = p.flavours[0], qty = 1;
   const batch = "VX" + (p.id * 7919).toString(36).toUpperCase().padStart(6, "Q");
@@ -373,7 +605,7 @@ function initProduct() {
       <div class="buy-row">
         <div class="qty"><button id="qMinus" aria-label="Decrease">−</button><span id="qVal">1</span><button id="qPlus" aria-label="Increase">+</button></div>
         <button class="btn btn-primary btn-lg" id="addBtn">Add to Cart</button>
-        <button class="btn btn-accent btn-lg" id="buyBtn">Buy Now</button>
+        <button class="btn btn-accent btn-lg" id="buyBtn">Book Now</button>
         <button class="btn btn-ghost btn-lg wish-lg" data-wish="${p.id}" aria-label="Wishlist">${getWish().includes(p.id) ? "♥" : "♡"}</button>
       </div>
 
@@ -452,14 +684,13 @@ function initProduct() {
   });
   pick("#sizes", v => {
     size = v;
-    const k = p.sizes.indexOf(v);
-    $("#pPrice").textContent = inr(Math.round(p.price * (1 + k * 0.85)));
+    $("#pPrice").textContent = inr(unitPrice(p, v));
   });
   pick("#flavours", v => flavour = v);
   $("#qMinus").addEventListener("click", () => { qty = Math.max(1, qty - 1); $("#qVal").textContent = qty; });
   $("#qPlus").addEventListener("click", () => { qty = Math.min(10, qty + 1); $("#qVal").textContent = qty; });
   $("#addBtn").addEventListener("click", () => addToCart(p.id, qty, size, flavour));
-  $("#buyBtn").addEventListener("click", () => { addToCart(p.id, qty, size, flavour); location.href = "cart.html"; });
+  $("#buyBtn").addEventListener("click", () => openLeadForm(p.id, qty, size, flavour));
   $("#pinBtn").addEventListener("click", () => {
     const v = $("#pin").value.trim();
     $("#pinOut").innerHTML = /^[1-9]\d{5}$/.test(v)
@@ -474,14 +705,15 @@ function initCart() {
   const COUPONS = { WELCOME10: 0.10, FIT15: 0.15 };
 
   const render = () => {
-    const cart = getCart();
+    const cart = getCart().filter(l => PRODUCTS.some(x => x.id === l.id));
+    if (cart.length !== getCart().length) setCart(cart);
     if (!cart.length) {
       $("#cartWrap").innerHTML = `<div class="empty card"><div style="font-size:56px">🛒</div><h2>Your cart is empty</h2><p>Add verified supplements and they'll show up here.</p><a class="btn btn-primary" href="products.html">Start Shopping</a></div>`;
       return;
     }
     const lines = cart.map((l, idx) => ({ ...l, idx, p: PRODUCTS.find(x => x.id === l.id) }));
-    const mrp = lines.reduce((a, l) => a + l.p.mrp * l.qty, 0);
-    const sub = lines.reduce((a, l) => a + l.p.price * l.qty, 0);
+    const mrp = lines.reduce((a, l) => a + unitMrp(l.p, l.size) * l.qty, 0);
+    const sub = lines.reduce((a, l) => a + unitPrice(l.p, l.size) * l.qty, 0);
     const disc = COUPONS[coupon] ? Math.round(sub * COUPONS[coupon]) : 0;
     const ship = sub - disc >= 999 ? 0 : 79;
     const total = sub - disc + ship;
@@ -497,7 +729,7 @@ function initCart() {
               <small>${l.p.brand} <span class="verified">✔ Verified</span></small>
               <a href="product.html?id=${l.p.id}"><b>${l.p.name}</b></a>
               <small>${l.size}${l.flavour !== "—" ? " · " + l.flavour : ""}</small>
-              <div class="pc-price"><b>${inr(l.p.price)}</b> <s>${inr(l.p.mrp)}</s> <em>${off(l.p)}% off</em></div>
+              <div class="pc-price"><b>${inr(unitPrice(l.p, l.size))}</b> <s>${inr(unitMrp(l.p, l.size))}</s> <em>${off(l.p)}% off</em></div>
             </div>
             <div class="cl-actions">
               <div class="qty"><button data-dec="${l.idx}">−</button><span>${l.qty}</span><button data-inc="${l.idx}">+</button></div>
@@ -527,10 +759,10 @@ function initCart() {
       e.preventDefault(); coupon = $("#couponIn").value.trim().toUpperCase(); store.set("vx_coupon", coupon); render();
       if (COUPONS[coupon]) toast(`Coupon <b>${coupon}</b> applied!`);
     });
-    $("#checkout").addEventListener("click", () => {
-      setCart([]); store.set("vx_coupon", "");
-      $("#cartWrap").innerHTML = `<div class="empty card"><div style="font-size:56px">✅</div><h2>Order placed!</h2><p>Order <b>#VX${Date.now().toString().slice(-7)}</b> is confirmed. Every item ships with a holographic authenticity seal.</p><a class="btn btn-primary" href="index.html">Continue Shopping</a></div>`;
-    });
+    $("#checkout").addEventListener("click", () => openCheckoutForm(lines, { payable: inr(total), coupon: disc ? coupon : "" }, () => {
+      setCart([]); store.set("vx_coupon", ""); coupon = "";
+      $("#cartWrap").innerHTML = `<div class="empty card"><div style="font-size:56px">✅</div><h2>Order placed!</h2><p>Your order has been received. Our team will contact you shortly to confirm it.</p><a class="btn btn-primary" href="index.html">Continue Shopping</a></div>`;
+    }));
   };
 
   $("#cartWrap").addEventListener("click", e => {
@@ -547,8 +779,132 @@ function initCart() {
   render();
 }
 
+/* ===== Account page: login, signup & order tracking ===== */
+const TRACK_STEPS = [["new", "Order placed"], ["confirmed", "Confirmed"], ["shipped", "Shipped"], ["delivered", "Delivered"]];
+const fmtDate = iso => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+async function authPost(path, body) {
+  const r = await fetch(`${API_BASE}/api/auth/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || "Something went wrong");
+  return data;
+}
+
+function initAccount() {
+  const wrap = $("#accountWrap");
+  const next = params.get("next");
+  const safeNext = next && /^[\w.-]+\.html(\?[^#]*)?$/.test(next) ? next : "";
+
+  if (!CURRENT_USER) {
+    $("#accountTitle").textContent = "Login / Sign up";
+    wrap.innerHTML = `
+      ${safeNext ? `<p class="auth-note">🔒 Please log in or create an account to place your order.</p>` : ""}
+      <div class="card auth-box">
+        <div class="auth-tabs"><button class="active" data-auth="login">Login</button><button data-auth="signup">Sign up</button></div>
+        <form id="loginForm" class="lead-form">
+          <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+          <label>Password<input name="password" type="password" required autocomplete="current-password" minlength="6"></label>
+          <p class="lead-error" hidden></p>
+          <button class="btn btn-primary btn-block btn-lg">Login</button>
+          <p class="auth-switch">New here? <button type="button" class="link" data-auth="signup">Create an account</button></p>
+        </form>
+        <form id="signupForm" class="lead-form" hidden>
+          <label>Full name<input name="name" required autocomplete="name" maxlength="80"></label>
+          <label>Email<input name="email" type="email" required autocomplete="email"></label>
+          <label>Mobile number<input name="phone" type="tel" required autocomplete="tel" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" title="Enter a valid 10-digit mobile number"></label>
+          <label>Password <small class="muted">(at least 6 characters)</small><input name="password" type="password" required autocomplete="new-password" minlength="6"></label>
+          <p class="lead-error" hidden></p>
+          <button class="btn btn-primary btn-block btn-lg">Create account</button>
+          <p class="auth-switch">Already have an account? <button type="button" class="link" data-auth="login">Log in</button></p>
+        </form>
+      </div>`;
+    const show = tab => {
+      $$("[data-auth]", wrap).forEach(b => b.classList.toggle("active", b.dataset.auth === tab));
+      $("#loginForm").hidden = tab !== "login"; $("#signupForm").hidden = tab !== "signup";
+    };
+    wrap.addEventListener("click", e => { const b = e.target.closest("[data-auth]"); if (b) show(b.dataset.auth); });
+    if (location.hash === "#signup") show("signup");
+    const handle = (form, path) => form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const btn = $("button:not([type=button])", form), err = $(".lead-error", form);
+      btn.disabled = true; err.hidden = true;
+      try {
+        await authPost(path, Object.fromEntries(new FormData(form)));
+        location.href = safeNext || "account.html#orders";
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; btn.disabled = false; }
+    });
+    handle($("#loginForm"), "login");
+    handle($("#signupForm"), "signup");
+    return;
+  }
+
+  const u = CURRENT_USER;
+  $("#accountTitle").textContent = "My Account";
+  wrap.innerHTML = `
+    <div class="card acct-head">
+      <div class="acct-avatar">${esc(u.name[0].toUpperCase())}</div>
+      <div><b>${esc(u.name)}</b><small>${esc(u.email)} · ${esc(u.phone)}</small></div>
+      <button class="btn btn-ghost" id="logoutBtn">Log out</button>
+    </div>
+    <h2 class="acct-sub" id="orders">My Orders</h2>
+    <div id="myOrders"><p class="muted">Loading your orders…</p></div>`;
+  $("#logoutBtn").addEventListener("click", async () => { await authPost("logout", {}).catch(() => {}); location.href = "index.html"; });
+  loadMyOrders();
+}
+
+function payLabel(o) {
+  const p = o.payment || { method: "cod", status: "pending" };
+  if (p.method === "upi") return `📱 UPI · <b class="pay-ok">${p.status === "refunded" ? "Refunded" : "Paid"}</b>${p.txnId ? ` · Txn ${esc(p.txnId)}` : ""}`;
+  return `💵 Cash on Delivery · <b class="${p.status === "paid" ? "pay-ok" : "pay-due"}">${p.status === "paid" ? "Paid" : `Pay ${inr(o.total)} on delivery`}</b>`;
+}
+async function loadMyOrders() {
+  const box = $("#myOrders");
+  let orders;
+  try {
+    const r = await fetch(`${API_BASE}/api/my/orders`, { credentials: "same-origin" });
+    if (!r.ok) throw new Error();
+    orders = await r.json();
+  } catch { box.innerHTML = `<p class="lead-error">Could not load your orders. Please refresh the page.</p>`; return; }
+  if (!orders.length) {
+    box.innerHTML = `<div class="empty card"><div style="font-size:56px">📦</div><h2>No orders yet</h2><p>Orders you place will show here so you can track them.</p><a class="btn btn-primary" href="products.html">Start Shopping</a></div>`;
+    return;
+  }
+  box.innerHTML = orders.map(o => {
+    const when = Object.fromEntries((o.history || [{ status: o.status, at: o.createdAt }]).map(h => [h.status, h.at]));
+    when.new ||= o.createdAt;
+    const reached = TRACK_STEPS.findIndex(([k]) => k === o.status);
+    const track = o.status === "cancelled"
+      ? `<p class="track-cancel">✖ This order was cancelled${when.cancelled ? " on " + fmtDate(when.cancelled) : ""}. Please call ${CONTACT.display} if you have questions.</p>`
+      : `<ol class="track">${TRACK_STEPS.map(([k, label], i) => `<li class="${i <= reached ? "done" : ""} ${i === reached ? "now" : ""}"><b>${label}</b><small>${when[k] ? fmtDate(when[k]) : i <= reached ? "Done" : "Pending"}</small></li>`).join("")}</ol>`;
+    return `<article class="card order-card">
+      <header><div><b>Order #${esc(o.orderNo)}</b><small>Placed ${fmtDate(o.createdAt)}</small></div><div class="oc-total"><b>${inr(o.total)}</b><span class="ostatus os-${o.status}">${o.status}</span></div></header>
+      ${track}
+      <ul class="oc-items">${o.items.map(i => `<li><span>${esc(i.brand)} ${esc(i.name)}<small>${esc(i.size)}${i.flavour !== "—" ? " · " + esc(i.flavour) : ""} · Qty ${i.qty}</small></span><b>${inr(i.lineTotal)}</b></li>`).join("")}</ul>
+      <p class="oc-pay">${payLabel(o)}</p>
+      <p class="oc-addr">📍 ${esc(o.customer.address)}</p>
+    </article>`;
+  }).join("");
+  if (location.hash === "#orders") $("#orders").scrollIntoView();
+}
+
 /* ===== Boot ===== */
-document.addEventListener("DOMContentLoaded", () => {
+async function loadProducts() {
+  if (location.protocol === "file:") return;
+  try {
+    const r = await fetch(`${API_BASE}/api/products`);
+    if (r.ok) PRODUCTS = await r.json();
+  } catch { /* server not running — keep the built-in catalogue */ }
+}
+let CURRENT_USER = null;
+async function loadUser() {
+  if (location.protocol === "file:") return;
+  try {
+    const r = await fetch(`${API_BASE}/api/auth/me`, { credentials: "same-origin" });
+    if (r.ok) CURRENT_USER = (await r.json()).user;
+  } catch { /* offline — treat as logged out */ }
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  await Promise.all([loadProducts(), loadUser()]);
   renderChrome();
-  ({ home: initHome, listing: initListing, product: initProduct, cart: initCart })[document.body.dataset.page]?.();
+  ({ home: initHome, listing: initListing, product: initProduct, cart: initCart, account: initAccount })[document.body.dataset.page]?.();
 });

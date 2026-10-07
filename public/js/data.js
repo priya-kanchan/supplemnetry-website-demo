@@ -1,10 +1,12 @@
 // Store contact — change these to your real numbers (digits only, with country code).
 const CONTACT = {
-  phone: "919876543210",          // used for click-to-call
-  whatsapp: "919876543210",       // used for wa.me link
-  display: "+91 98765 43210",     // shown on the site
+  phone: "917257866897",          // used for click-to-call
+  whatsapp: "917257866897",       // used for wa.me link
+  display: "+91 72578 66897",     // shown on the site
   waMessage: "Hi Vitalyx! I need help choosing a supplement."
 };
+// Where the API lives. Empty = same server as the website.
+const API_BASE = "";
 const telLink = `tel:+${CONTACT.phone}`;
 const waLink = (msg = CONTACT.waMessage) => `https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent(msg)}`;
 
@@ -40,7 +42,8 @@ const BRANDS = [
   { name: "HydraFuel", tag: "Hydration" }
 ];
 
-const PRODUCTS = [
+// Starter catalogue — the live list comes from the dashboard via /api/products
+let PRODUCTS = [
   {
     id: 1, name: "100% Whey Protein Isolate", brand: "Vitalyx Pro", category: "protein", goals: ["muscle", "recovery"],
     price: 4299, mrp: 5999, rating: 4.6, reviews: 12840, color: "#0b6e4f", accent: "#9be3c4", badge: "Bestseller",

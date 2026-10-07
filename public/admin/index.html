@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Dashboard | Vitalyx</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <!-- Login -->
+  <section id="loginView" class="login" hidden>
+    <form id="loginForm" class="login-card">
+      <div class="brand"><span class="logo-mark">V</span><div><b>Vitalyx</b><small>Admin Dashboard</small></div></div>
+      <label>Username<input name="username" required autocomplete="username"></label>
+      <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+      <p id="loginError" class="error" hidden></p>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+    </form>
+  </section>
+
+  <!-- App -->
+  <div id="appView" class="app" hidden>
+    <aside class="side">
+      <div class="brand"><span class="logo-mark">V</span><div><b>Vitalyx</b><small>Admin Dashboard</small></div></div>
+      <nav class="nav">
+        <button data-view="overview" class="active">📊 <span>Overview</span></button>
+        <button data-view="orders">🧾 <span>Orders</span> <i id="newBadge" class="badge" hidden>0</i></button>
+        <button data-view="products">📦 <span>Products</span></button>
+      </nav>
+      <div class="side-foot">
+        <a href="/" target="_blank" rel="noopener">↗ View website</a>
+        <button id="logoutBtn">⎋ Log out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- Overview -->
+      <section data-panel="overview">
+        <header class="page-head"><div><h1>Overview</h1><p id="storageInfo" class="muted"></p></div><button class="btn btn-ghost" data-refresh>↻ Refresh</button></header>
+        <div class="stats" id="stats"></div>
+        <div class="two-col">
+          <div class="card"><div class="card-head"><h2>Recent orders</h2><button class="link" data-goto="orders">View all →</button></div><div id="recentOrders"></div></div>
+          <div class="card"><div class="card-head"><h2>Top selling products</h2></div><div id="topProducts"></div></div>
+        </div>
+      </section>
+
+      <!-- Orders -->
+      <section data-panel="orders" hidden>
+        <header class="page-head"><div><h1>Orders</h1><p class="muted">Every order placed on the website lands here.</p></div><button class="btn btn-ghost" data-refresh>↻ Refresh</button></header>
+        <div class="toolbar">
+          <div class="chips" id="statusChips"></div>
+          <input id="orderSearch" type="search" placeholder="Search name, phone, order no or txn ID…">
+        </div>
+        <div class="card table-wrap"><table class="table" id="ordersTable"></table></div>
+      </section>
+
+      <!-- Products -->
+      <section data-panel="products" hidden>
+        <header class="page-head"><div><h1>Products</h1><p class="muted">Changes show on the website straight away.</p></div><button class="btn btn-primary" id="addProductBtn">＋ Add product</button></header>
+        <div class="toolbar">
+          <select id="catFilter"><option value="">All categories</option></select>
+          <input id="productSearch" type="search" placeholder="Search products or brands…">
+        </div>
+        <div class="card table-wrap"><table class="table" id="productsTable"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Order detail -->
+  <div class="modal" id="orderModal"><div class="modal-box" role="dialog" aria-modal="true"><button class="modal-x" data-close aria-label="Close">✕</button><div id="orderDetail"></div></div></div>
+
+  <!-- Product form -->
+  <div class="modal" id="productModal">
+    <div class="modal-box wide" role="dialog" aria-modal="true" aria-labelledby="productFormTitle">
+      <button class="modal-x" data-close aria-label="Close">✕</button>
+      <h2 id="productFormTitle">Add product</h2>
+      <form id="productForm" class="pform">
+        <div class="img-pick">
+          <div id="imgPreview" class="img-preview">No photo</div>
+          <div>
+            <label class="btn btn-ghost">Upload photo<input type="file" id="imgInput" accept="image/jpeg,image/png,image/webp" hidden></label>
+            <button type="button" class="link danger" id="imgRemove" hidden>Remove photo</button>
+            <p class="muted small">JPG, PNG or WebP. Without a photo the site draws a pack using the colours below.</p>
+          </div>
+        </div>
+        <label class="span2">Product name *<input name="name" required maxlength="120"></label>
+        <label>Brand *<input name="brand" required maxlength="60" list="brandList"><datalist id="brandList"></datalist></label>
+        <label>Category *<select name="category" required></select></label>
+        <label>Selling price (₹) *<input name="price" type="number" min="1" required></label>
+        <label>MRP (₹) *<input name="mrp" type="number" min="1" required></label>
+        <label class="span2">Sizes / weights * <small>comma separated, smallest first — e.g. 500 g, 1 kg, 2 kg</small><input name="sizes" required></label>
+        <label class="span2">Flavours <small>comma separated — leave empty if none</small><input name="flavours"></label>
+        <fieldset class="span2"><legend>Goals</legend><div id="goalChecks" class="checks"></div></fieldset>
+        <label>Badge <small>e.g. Bestseller, New</small><input name="badge" maxlength="30"></label>
+        <label>Protein per serving <small>e.g. 24g</small><input name="protein" maxlength="20"></label>
+        <label>Servings<input name="servings" type="number" min="0"></label>
+        <label>Rating (0–5)<input name="rating" type="number" min="0" max="5" step="0.1"></label>
+        <label>Number of reviews<input name="reviews" type="number" min="0"></label>
+        <div class="colors"><label>Pack colour<input name="color" type="color" value="#0b6e4f"></label><label>Label colour<input name="accent" type="color" value="#e6f4ee"></label></div>
+        <label class="span2">Description<textarea name="desc" rows="3" maxlength="3000"></textarea></label>
+        <label class="span2">Highlights <small>one per line</small><textarea name="highlights" rows="4"></textarea></label>
+        <label class="toggle span2"><input type="checkbox" name="active" checked> Show this product on the website</label>
+        <p class="muted small span2">Bigger sizes are priced automatically: each size step adds 85% of the base price (same as the website).</p>
+        <p id="productError" class="error span2" hidden></p>
+        <div class="form-actions span2"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Save product</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+  <script src="/js/data.js"></script>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
