@@ -115,10 +115,22 @@ const setCookie = (res, name, value, opts, maxAge) => res.append("Set-Cookie", `
 const COOKIE = "vx_admin";
 const ADMIN_TTL = 24 * 3600; // 1 day
 const cookieOpts = `Path=/api/admin; HttpOnly; SameSite=Strict${PROD ? "; Secure" : ""}`;
-const makeAdminToken = () => jwt.sign({ role: "admin", pv: pwFingerprint(ADMIN_PASSWORD) }, SECRET, { ...JWT_OPTS, audience: AUD_ADMIN, subject: ADMIN_USER, expiresIn: ADMIN_TTL });
+const makeAdminToken = () => jwt.sign({ role: "admin", pv: pwFingerprint(adminVersion()) }, SECRET, { ...JWT_OPTS, audience: AUD_ADMIN, subject: ADMIN_USER, expiresIn: ADMIN_TTL });
 function isAdmin(req) {
   const p = verifyJwt(readToken(req, COOKIE), AUD_ADMIN);
-  return !!p && p.role === "admin" && p.sub === ADMIN_USER && p.pv === pwFingerprint(ADMIN_PASSWORD);
+  return !!p && p.role === "admin" && p.sub === ADMIN_USER && p.pv === pwFingerprint(adminVersion());
+}
+
+/* The admin password starts as ADMIN_PASSWORD from the environment. Once it is changed in the dashboard
+   (or reset with ADMIN_RECOVERY_KEY) its hash is saved in the "settings" collection and used from then on. */
+const RECOVERY_KEY = process.env.ADMIN_RECOVERY_KEY || "";
+let adminHash = (await db.get("settings", "admin"))?.passwordHash || "";
+const adminVersion = () => adminHash || ADMIN_PASSWORD;
+const checkAdminPassword = pw => adminHash ? checkPassword(String(pw ?? ""), adminHash) : safeEqual(pw, ADMIN_PASSWORD);
+async function setAdminPassword(pw) {
+  const doc = { passwordHash: await hashPassword(pw), updatedAt: new Date().toISOString() };
+  if (!await db.update("settings", "admin", doc)) await db.insert("settings", { id: "admin", ...doc });
+  adminHash = doc.passwordHash;
 }
 const requireAdmin = (req, res, next) => isAdmin(req) ? next() : res.status(401).json({ error: "Please log in" });
 
@@ -133,7 +145,7 @@ async function currentUser(req) {
   const u = await db.get("customers", p.sub);
   return u && p.pv === pwFingerprint(u.passwordHash) ? u : null;
 }
-const publicUser = u => ({ name: u.name, email: u.email, phone: u.phone, address: u.address || "" });
+const publicUser = u => ({ name: u.name, email: u.email, phone: u.phone, address: u.address || "", mustChangePassword: !!u.mustChangePassword });
 const setUserCookie = (res, u) => setCookie(res, USER_COOKIE, makeUserToken(u), userCookieOpts, USER_TTL);
 
 const hashPassword = pw => new Promise((resolve, reject) => {
@@ -147,6 +159,14 @@ const checkPassword = (pw, stored) => new Promise(resolve => {
 });
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[6-9]\d{9}$/;
+const newPassword = (pw, min) => {
+  pw = String(pw ?? "");
+  if (pw.length < min || pw.length > 100) throw bad(`New password must be at least ${min} characters`);
+  return pw;
+};
+// Easy-to-read temporary password (no 0/O, 1/l/I) that the admin can read out on a call
+const TEMP_CHARS = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const tempPassword = () => Array.from({ length: 10 }, () => TEMP_CHARS[crypto.randomInt(TEMP_CHARS.length)]).join("");
 
 /* ---------- public API ---------- */
 const smallJson = express.json({ limit: "20kb" });
@@ -181,6 +201,28 @@ app.post("/api/auth/login", authLimit, smallJson, async (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   setCookie(res, USER_COOKIE, "", userCookieOpts, 0);
   res.json({ ok: true });
+});
+
+/* Forgot password: there is no email service, so the customer asks for a reset with their registered
+   email + mobile. The request shows up in the dashboard; the admin confirms it's them on a call/WhatsApp
+   and gives them a temporary password. The reply is the same whether or not the details match. */
+app.post("/api/auth/forgot", authLimit, smallJson, async (req, res) => {
+  const email = str(req.body?.email, 120).toLowerCase(), phone = str(req.body?.phone, 10);
+  if (!EMAIL_RE.test(email)) throw bad("Please enter a valid email");
+  if (!PHONE_RE.test(phone)) throw bad("Please enter a valid 10-digit mobile number");
+  const u = await db.findOne("customers", "email", email);
+  if (u && u.phone === phone) await db.update("customers", u.id, { resetRequestedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/password", authLimit, smallJson, async (req, res) => {
+  const u = await currentUser(req);
+  if (!u) return res.status(401).json({ error: "Please log in again" });
+  if (!await checkPassword(String(req.body?.currentPassword ?? ""), u.passwordHash)) throw bad("Your current password is wrong");
+  const pw = newPassword(req.body?.newPassword, 6);
+  const doc = await db.update("customers", u.id, { passwordHash: await hashPassword(pw), mustChangePassword: false, updatedAt: new Date().toISOString() });
+  setUserCookie(res, doc); // the old password's sessions on other devices stop working
+  res.json({ user: publicUser(doc) });
 });
 
 app.get("/api/auth/me", async (req, res) => {
@@ -281,13 +323,30 @@ app.post("/api/orders", rateLimit(20, 60 * 60e3), smallJson, async (req, res) =>
 });
 
 /* ---------- admin API ---------- */
-app.post("/api/admin/login", rateLimit(10, 15 * 60e3), smallJson, (req, res) => {
+app.post("/api/admin/login", rateLimit(10, 15 * 60e3), smallJson, async (req, res) => {
   const { username, password } = req.body || {};
-  if (!safeEqual(username, ADMIN_USER) || !safeEqual(password, ADMIN_PASSWORD)) {
+  const passOk = await checkAdminPassword(password);
+  if (!safeEqual(username, ADMIN_USER) || !passOk) {
     return res.status(401).json({ error: "Wrong username or password" });
   }
   setCookie(res, COOKIE, makeAdminToken(), cookieOpts, ADMIN_TTL);
   res.json({ ok: true, user: ADMIN_USER });
+});
+// Forgot password: reset with the secret ADMIN_RECOVERY_KEY kept in .env / Render environment
+app.post("/api/admin/reset-password", rateLimit(5, 15 * 60e3), smallJson, async (req, res) => {
+  if (!RECOVERY_KEY) throw bad("Password reset is not set up. Add ADMIN_RECOVERY_KEY to the server environment first.");
+  const { username, recoveryKey } = req.body || {};
+  if (!safeEqual(username, ADMIN_USER) || !safeEqual(recoveryKey, RECOVERY_KEY)) {
+    return res.status(401).json({ error: "Wrong username or recovery key" });
+  }
+  await setAdminPassword(newPassword(req.body.newPassword, 8));
+  res.json({ ok: true });
+});
+app.post("/api/admin/password", requireAdmin, smallJson, async (req, res) => {
+  if (!await checkAdminPassword(req.body?.currentPassword)) throw bad("Your current password is wrong");
+  await setAdminPassword(newPassword(req.body?.newPassword, 8));
+  setCookie(res, COOKIE, makeAdminToken(), cookieOpts, ADMIN_TTL); // every other admin session is logged out
+  res.json({ ok: true });
 });
 app.post("/api/admin/logout", (req, res) => {
   setCookie(res, COOKIE, "", cookieOpts, 0);
@@ -324,6 +383,21 @@ app.patch("/api/admin/orders/:id", smallJson, async (req, res) => {
 app.delete("/api/admin/orders/:id", async (req, res) => {
   if (!await db.remove("orders", req.params.id)) throw new HttpError(404, "Order not found");
   res.json({ ok: true });
+});
+
+// Customers
+app.get("/api/admin/customers", async (req, res) => {
+  const [customers, orders] = await Promise.all([db.all("customers"), db.all("orders")]);
+  const count = {};
+  for (const o of orders) count[o.customerId] = (count[o.customerId] || 0) + 1;
+  res.json(customers.sort((a, b) => (b.resetRequestedAt || "").localeCompare(a.resetRequestedAt || "") || b.createdAt.localeCompare(a.createdAt))
+    .map(u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, createdAt: u.createdAt, orders: count[u.id] || 0, resetRequestedAt: u.resetRequestedAt || "", mustChangePassword: !!u.mustChangePassword })));
+});
+app.post("/api/admin/customers/:id/reset-password", async (req, res) => {
+  const pw = tempPassword();
+  const u = await db.update("customers", req.params.id, { passwordHash: await hashPassword(pw), mustChangePassword: true, resetRequestedAt: "", updatedAt: new Date().toISOString() });
+  if (!u) throw new HttpError(404, "Customer not found");
+  res.json({ tempPassword: pw });
 });
 
 // Products

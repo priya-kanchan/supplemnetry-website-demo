@@ -190,3 +190,11 @@ select.status-sel { width: auto; padding: 5px 8px; font-size: 13px; }
   .pform, .od-grid { grid-template-columns: 1fr; }
   .img-pick { flex-direction: column; align-items: flex-start; }
 }
+
+/* password forms */
+.link.small { font-size: 13px; }
+.center { justify-self: center; }
+.pw-form { display: grid; gap: 12px; }
+.temp-pw { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg); border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin: 12px 0; }
+.temp-pw code { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+.req { display: inline-block; background: #fff4e0; color: #9a5b00; border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 700; }

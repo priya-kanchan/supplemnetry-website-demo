@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { MongoClient } from "mongodb";
 
-const COLLECTIONS = ["products", "orders", "images", "customers"];
+const COLLECTIONS = ["products", "orders", "images", "customers", "settings"];
 
 async function mongoStore(uri) {
   const client = new MongoClient(uri);
@@ -17,6 +17,7 @@ async function mongoStore(uri) {
   await col("images").createIndex({ id: 1 }, { unique: true });
   await col("customers").createIndex({ id: 1 }, { unique: true });
   await col("customers").createIndex({ email: 1 }, { unique: true });
+  await col("settings").createIndex({ id: 1 }, { unique: true });
   await col("orders").createIndex({ customerId: 1 });
   await col("orders").createIndex({ payRef: 1 }, { unique: true, sparse: true });
   const noId = { projection: { _id: 0 } };

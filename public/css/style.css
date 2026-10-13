@@ -405,6 +405,15 @@ section.block { margin: 36px auto; }
 .auth-tabs button.active { background: #fff; color: var(--ink); box-shadow: var(--shadow); }
 .auth-switch { text-align: center; font-size: 13px; color: var(--muted); }
 .auth-switch .link { color: var(--primary); font-weight: 600; }
+.auth-box [hidden] { display: none; }
+.auth-forgot { text-align: right; margin-top: -6px; }
+.auth-forgot .link { color: var(--primary); }
+.auth-h { font-size: 18px; margin-bottom: 4px; }
+.auth-done { text-align: center; display: grid; gap: 10px; }
+.auth-done a { color: var(--primary); font-weight: 600; }
+.pw-card { padding: 0; margin-top: 14px; }
+.pw-card summary { padding: 16px 20px; font-weight: 600; cursor: pointer; }
+.pw-card form { padding: 0 20px 20px; max-width: 420px; }
 .acct-head { display: flex; align-items: center; gap: 14px; padding: 18px; flex-wrap: wrap; }
 .acct-head > div:nth-child(2) { flex: 1; min-width: 180px; }
 .acct-head small { display: block; color: var(--muted); }

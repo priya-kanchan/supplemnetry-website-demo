@@ -11,7 +11,7 @@ const PAY_METHODS = { cod: "Cash on Delivery", upi: "UPI" };
 const payOf = o => o.payment || { method: "cod", status: "pending", txnId: "", ref: "", paidAt: "" };
 const payPill = o => { const p = payOf(o); return `<span class="pay pay-${p.status}">${p.status === "pending" ? "Unpaid" : p.status}</span>`; };
 
-const state = { orders: [], products: [], customers: 0, view: "overview", orderFilter: "all", orderQ: "", productQ: "", productCat: "", editing: null, image: "" };
+const state = { orders: [], products: [], customers: 0, customerList: [], customerQ: "", view: "overview", orderFilter: "all", orderQ: "", productQ: "", productCat: "", editing: null, image: "" };
 
 function toast(msg) {
   const t = $("#toast");
@@ -27,13 +27,18 @@ async function api(path, opts = {}) {
     credentials: "same-origin"
   });
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401 && !path.endsWith("/login")) { showLogin(); throw new Error("Session expired — please log in again"); }
+  if (r.status === 401 && !/\/(login|reset-password)$/.test(path)) { showLogin(); throw new Error("Session expired — please log in again"); }
   if (!r.ok) throw new Error(data.error || "Request failed");
   return data;
 }
 
 /* ---------- auth ---------- */
-function showLogin() { $("#appView").hidden = true; $("#loginView").hidden = false; }
+function showLogin() { $("#appView").hidden = true; $("#loginView").hidden = false; showLoginForm("login"); }
+function showLoginForm(which) {
+  $("#loginForm").hidden = which !== "login"; $("#resetForm").hidden = which !== "reset";
+  $$("#loginView .error").forEach(e => e.hidden = true);
+}
+$("#loginView").addEventListener("click", e => { const b = e.target.closest("[data-login-view]"); if (b) showLoginForm(b.dataset.loginView); });
 async function showApp(me) {
   $("#loginView").hidden = true; $("#appView").hidden = false;
   state.customers = me.customers || 0;
@@ -51,34 +56,74 @@ $("#loginForm").addEventListener("submit", async e => {
     showApp(await api("/admin/me"));
   } catch (ex) { err.textContent = ex.message; err.hidden = false; }
 });
+// Forgot password: reset with the server's recovery key, then log in with the new password
+$("#resetForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, d = Object.fromEntries(new FormData(f)), err = $(".error", f), btn = $("[type=submit]", f);
+  err.hidden = true;
+  if (d.newPassword !== d.confirmPassword) { err.textContent = "The two new passwords don't match"; err.hidden = false; return; }
+  btn.disabled = true;
+  try {
+    await api("/admin/reset-password", { method: "POST", body: d });
+    f.reset(); showLoginForm("login");
+    $("#loginForm").username.value = d.username;
+    toast("Password changed. Log in with your new password.");
+  } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  finally { btn.disabled = false; }
+});
+$("#changePwBtn").addEventListener("click", () => {
+  const f = $("#passwordForm");
+  f.reset(); $(".error", f).hidden = true;
+  openModal($("#passwordModal"));
+  setTimeout(() => f.currentPassword.focus(), 50);
+});
+$("#passwordForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, d = Object.fromEntries(new FormData(f)), err = $(".error", f), btn = $("[type=submit]", f);
+  err.hidden = true;
+  if (d.newPassword !== d.confirmPassword) { err.textContent = "The two new passwords don't match"; err.hidden = false; return; }
+  btn.disabled = true;
+  try {
+    await api("/admin/password", { method: "POST", body: d });
+    closeModal($("#passwordModal")); f.reset();
+    toast("Password changed. Use the new password next time you log in.");
+  } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  finally { btn.disabled = false; }
+});
 $("#logoutBtn").addEventListener("click", async () => { await api("/admin/logout", { method: "POST" }).catch(() => {}); showLogin(); });
 
 /* ---------- data ---------- */
 async function loadAll() {
   let me;
-  [state.orders, state.products, me] = await Promise.all([api("/admin/orders"), api("/admin/products"), api("/admin/me")]);
+  [state.orders, state.products, state.customerList, me] = await Promise.all([api("/admin/orders"), api("/admin/products"), api("/admin/customers"), api("/admin/me")]);
   state.customers = me.customers || 0;
   renderAll();
 }
 function renderAll() {
   const n = state.orders.filter(o => o.status === "new").length;
   $("#newBadge").textContent = n; $("#newBadge").hidden = !n;
-  renderOverview(); renderOrders(); renderProducts();
+  const r = state.customerList.filter(c => c.resetRequestedAt).length;
+  $("#resetBadge").textContent = r; $("#resetBadge").hidden = !r;
+  renderOverview(); renderOrders(); renderProducts(); renderCustomers();
 }
 // Check for new orders every 30 seconds
 setInterval(async () => {
   if ($("#appView").hidden || document.hidden) return;
   try {
     const before = new Set(state.orders.map(o => o.id));
-    state.orders = await api("/admin/orders");
+    const resets = () => state.customerList.filter(c => c.resetRequestedAt).map(c => c.id).join();
+    const resetsBefore = resets();
+    [state.orders, state.customerList] = await Promise.all([api("/admin/orders"), api("/admin/customers")]);
     const fresh = state.orders.filter(o => !before.has(o.id)).length;
-    if (fresh) { toast(`🔔 ${fresh} new order${fresh > 1 ? "s" : ""} received`); renderAll(); }
+    if (fresh) toast(`🔔 ${fresh} new order${fresh > 1 ? "s" : ""} received`);
+    else if (resets() !== resetsBefore && resets()) toast("🔑 A customer asked for a password reset");
+    if (fresh || resets() !== resetsBefore) renderAll();
   } catch { /* ignore — next tick will retry */ }
 }, 30000);
 
 /* ---------- navigation ---------- */
 function go(view) {
-  if (!["overview", "orders", "products"].includes(view)) view = "overview";
+  if (!["overview", "orders", "products", "customers"].includes(view)) view = "overview";
   state.view = view;
   $$(".nav [data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   $$("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== view);
@@ -226,6 +271,46 @@ function showOrder(id) {
   };
   openModal($("#orderModal"));
 }
+
+/* ---------- customers ---------- */
+function renderCustomers() {
+  const q = state.customerQ.toLowerCase();
+  const rows = state.customerList.filter(c => !q || `${c.name} ${c.email} ${c.phone}`.toLowerCase().includes(q));
+  $("#customersTable").innerHTML = `<thead><tr><th>Customer</th><th>Mobile</th><th class="num">Orders</th><th>Joined</th><th>Password</th><th></th></tr></thead>
+    <tbody>${rows.length ? rows.map(c => `<tr>
+      <td><b>${esc(c.name)}</b><small>${esc(c.email)}</small></td>
+      <td>${esc(c.phone)}</td>
+      <td class="num">${c.orders}</td>
+      <td>${fmtDate(c.createdAt)}</td>
+      <td>${c.resetRequestedAt ? `<span class="req">Forgot password</span><small>${fmtDate(c.resetRequestedAt)}</small>` : c.mustChangePassword ? `<small>Temporary password given</small>` : `<small>—</small>`}</td>
+      <td class="actions"><button data-reset-pw="${c.id}">Reset password</button></td>
+    </tr>`).join("") : `<tr><td colspan="6" class="empty-note">No customers found.</td></tr>`}</tbody>`;
+}
+$("#customerSearch").addEventListener("input", e => { state.customerQ = e.target.value.trim(); renderCustomers(); });
+$("#customersTable").addEventListener("click", async e => {
+  const b = e.target.closest("[data-reset-pw]"); if (!b) return;
+  const c = state.customerList.find(x => x.id === b.dataset.resetPw);
+  if (!confirm(`Reset the password of ${c.name} (${c.phone})?
+
+Only do this after you have checked it's really them, e.g. on a call to their registered number. Their old password will stop working.`)) return;
+  try {
+    const { tempPassword } = await api(`/admin/customers/${c.id}/reset-password`, { method: "POST" });
+    state.customerList = state.customerList.map(x => x.id === c.id ? { ...x, resetRequestedAt: "", mustChangePassword: true } : x);
+    renderAll();
+    const msg = `Hi ${c.name}, this is Vitalyx. Your temporary password is ${tempPassword}
+Log in with your email ${c.email} and set a new password under My Account.`;
+    $("#tempPwBody").innerHTML = `
+      <h2>Temporary password for ${esc(c.name)}</h2>
+      <p class="muted small">Share it only with the customer. It is shown once. After logging in, they will be asked to set their own password.</p>
+      <div class="temp-pw"><code>${esc(tempPassword)}</code><button class="btn btn-ghost" id="copyTempPw">Copy</button></div>
+      <div class="contact-btns">
+        <a class="btn btn-ghost" href="https://wa.me/91${esc(c.phone)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Send on WhatsApp</a>
+        <a class="btn btn-ghost" href="tel:+91${esc(c.phone)}">📞 Call</a>
+      </div>`;
+    $("#copyTempPw").onclick = () => navigator.clipboard.writeText(tempPassword).then(() => toast("Copied"), () => toast("Could not copy. Please select it by hand."));
+    openModal($("#tempPwModal"));
+  } catch (ex) { toast(ex.message); }
+});
 
 /* ---------- products ---------- */
 const thumb = p => p.image

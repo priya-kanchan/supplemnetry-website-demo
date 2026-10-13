@@ -18,6 +18,18 @@
       <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
       <p id="loginError" class="error" hidden></p>
       <button class="btn btn-primary btn-block" type="submit">Log in</button>
+      <button type="button" class="link small center" data-login-view="reset">Forgot password?</button>
+    </form>
+    <form id="resetForm" class="login-card" hidden>
+      <div class="brand"><span class="logo-mark">V</span><div><b>Reset password</b><small>Admin Dashboard</small></div></div>
+      <p class="muted small">Enter the recovery key saved as <code>ADMIN_RECOVERY_KEY</code> on the server (.env on your computer, Environment on Render) and choose a new password.</p>
+      <label>Username<input name="username" required autocomplete="username"></label>
+      <label>Recovery key<input name="recoveryKey" type="password" required autocomplete="off"></label>
+      <label>New password <small class="muted">(at least 8 characters)</small><input name="newPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+      <label>Confirm new password<input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+      <p class="error" hidden></p>
+      <button class="btn btn-primary btn-block" type="submit">Set new password</button>
+      <button type="button" class="link small center" data-login-view="login">← Back to login</button>
     </form>
   </section>
 
@@ -29,9 +41,11 @@
         <button data-view="overview" class="active">📊 <span>Overview</span></button>
         <button data-view="orders">🧾 <span>Orders</span> <i id="newBadge" class="badge" hidden>0</i></button>
         <button data-view="products">📦 <span>Products</span></button>
+        <button data-view="customers">👥 <span>Customers</span> <i id="resetBadge" class="badge" hidden title="Password reset requests">0</i></button>
       </nav>
       <div class="side-foot">
         <a href="/" target="_blank" rel="noopener">↗ View website</a>
+        <button id="changePwBtn">🔑 Change password</button>
         <button id="logoutBtn">⎋ Log out</button>
       </div>
     </aside>
@@ -66,11 +80,37 @@
         </div>
         <div class="card table-wrap"><table class="table" id="productsTable"></table></div>
       </section>
+
+      <!-- Customers -->
+      <section data-panel="customers" hidden>
+        <header class="page-head"><div><h1>Customers</h1><p class="muted">Customers who forgot their password show up on top. Call or WhatsApp them on their registered number to check it's really them, then reset.</p></div><button class="btn btn-ghost" data-refresh>↻ Refresh</button></header>
+        <div class="toolbar"><input id="customerSearch" type="search" placeholder="Search name, email or phone…"></div>
+        <div class="card table-wrap"><table class="table" id="customersTable"></table></div>
+      </section>
     </main>
   </div>
 
   <!-- Order detail -->
   <div class="modal" id="orderModal"><div class="modal-box" role="dialog" aria-modal="true"><button class="modal-x" data-close aria-label="Close">✕</button><div id="orderDetail"></div></div></div>
+
+  <!-- Change admin password -->
+  <div class="modal" id="passwordModal">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+      <button class="modal-x" data-close aria-label="Close">✕</button>
+      <h2 id="pwTitle">Change admin password</h2>
+      <form id="passwordForm" class="pw-form">
+        <label>Current password<input name="currentPassword" type="password" required autocomplete="current-password"></label>
+        <label>New password <small class="muted">(at least 8 characters)</small><input name="newPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label>Confirm new password<input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+        <p class="muted small">From now on you log in with the new password. Other devices logged in to the dashboard are logged out.</p>
+        <p class="error" hidden></p>
+        <div class="form-actions"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Change password</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Customer temporary password -->
+  <div class="modal" id="tempPwModal"><div class="modal-box" role="dialog" aria-modal="true"><button class="modal-x" data-close aria-label="Close">✕</button><div id="tempPwBody"></div></div></div>
 
   <!-- Product form -->
   <div class="modal" id="productModal">

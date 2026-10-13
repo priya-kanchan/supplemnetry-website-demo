@@ -804,6 +804,7 @@ function initAccount() {
         <form id="loginForm" class="lead-form">
           <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required autocomplete="current-password" minlength="6"></label>
+          <p class="auth-forgot"><button type="button" class="link" data-auth="forgot">Forgot password?</button></p>
           <p class="lead-error" hidden></p>
           <button class="btn btn-primary btn-block btn-lg">Login</button>
           <p class="auth-switch">New here? <button type="button" class="link" data-auth="signup">Create an account</button></p>
@@ -817,10 +818,27 @@ function initAccount() {
           <button class="btn btn-primary btn-block btn-lg">Create account</button>
           <p class="auth-switch">Already have an account? <button type="button" class="link" data-auth="login">Log in</button></p>
         </form>
+        <form id="forgotForm" class="lead-form" hidden>
+          <h3 class="auth-h">Forgot your password?</h3>
+          <p class="muted">Enter the email and mobile number of your account. Our team will call or WhatsApp you on that number and give you a temporary password.</p>
+          <label>Email<input name="email" type="email" required autocomplete="email"></label>
+          <label>Registered mobile number<input name="phone" type="tel" required autocomplete="tel" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" title="Enter a valid 10-digit mobile number"></label>
+          <p class="lead-error" hidden></p>
+          <button class="btn btn-primary btn-block btn-lg">Request password reset</button>
+          <p class="auth-switch">Remembered it? <button type="button" class="link" data-auth="login">Back to login</button></p>
+        </form>
+        <div id="forgotDone" class="auth-done" hidden>
+          <div style="font-size:44px">📞</div>
+          <h3 class="auth-h">Request received</h3>
+          <p class="muted">If the email and mobile number match an account, our team will contact you on that number soon with a temporary password. Need it faster? Call <a href="${telLink}">${CONTACT.display}</a> or <a href="${waLink("Hi, I forgot my Vitalyx account password.")}" target="_blank" rel="noopener">WhatsApp us</a>.</p>
+          <button type="button" class="btn btn-ghost btn-block" data-auth="login">Back to login</button>
+        </div>
       </div>`;
     const show = tab => {
-      $$("[data-auth]", wrap).forEach(b => b.classList.toggle("active", b.dataset.auth === tab));
+      $$(".auth-tabs [data-auth]", wrap).forEach(b => b.classList.toggle("active", b.dataset.auth === tab));
+      $(".auth-tabs", wrap).hidden = tab === "forgot";
       $("#loginForm").hidden = tab !== "login"; $("#signupForm").hidden = tab !== "signup";
+      $("#forgotForm").hidden = tab !== "forgot"; $("#forgotDone").hidden = true;
     };
     wrap.addEventListener("click", e => { const b = e.target.closest("[data-auth]"); if (b) show(b.dataset.auth); });
     if (location.hash === "#signup") show("signup");
@@ -829,12 +847,14 @@ function initAccount() {
       const btn = $("button:not([type=button])", form), err = $(".lead-error", form);
       btn.disabled = true; err.hidden = true;
       try {
-        await authPost(path, Object.fromEntries(new FormData(form)));
-        location.href = safeNext || "account.html#orders";
+        const r = await authPost(path, Object.fromEntries(new FormData(form)));
+        if (path === "forgot") { form.reset(); form.hidden = true; $("#forgotDone").hidden = false; btn.disabled = false; return; }
+        location.href = r.user?.mustChangePassword ? "account.html#password" : safeNext || "account.html#orders";
       } catch (ex) { err.textContent = ex.message; err.hidden = false; btn.disabled = false; }
     });
     handle($("#loginForm"), "login");
     handle($("#signupForm"), "signup");
+    handle($("#forgotForm"), "forgot");
     return;
   }
 
@@ -846,9 +866,33 @@ function initAccount() {
       <div><b>${esc(u.name)}</b><small>${esc(u.email)} · ${esc(u.phone)}</small></div>
       <button class="btn btn-ghost" id="logoutBtn">Log out</button>
     </div>
+    ${u.mustChangePassword ? `<p class="auth-note">🔑 You logged in with a temporary password. Please set your own password below.</p>` : ""}
+    <details class="card pw-card" id="password" ${u.mustChangePassword || location.hash === "#password" ? "open" : ""}>
+      <summary>🔑 Change password</summary>
+      <form id="pwForm" class="lead-form">
+        <label>${u.mustChangePassword ? "Temporary password" : "Current password"}<input name="currentPassword" type="password" required autocomplete="current-password"></label>
+        <label>New password <small class="muted">(at least 6 characters)</small><input name="newPassword" type="password" required minlength="6" autocomplete="new-password"></label>
+        <label>Confirm new password<input name="confirmPassword" type="password" required minlength="6" autocomplete="new-password"></label>
+        <p class="lead-error" hidden></p>
+        <button class="btn btn-primary">Save new password</button>
+      </form>
+    </details>
     <h2 class="acct-sub" id="orders">My Orders</h2>
     <div id="myOrders"><p class="muted">Loading your orders…</p></div>`;
   $("#logoutBtn").addEventListener("click", async () => { await authPost("logout", {}).catch(() => {}); location.href = "index.html"; });
+  $("#pwForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const f = e.target, d = Object.fromEntries(new FormData(f)), err = $(".lead-error", f), btn = $("button", f);
+    err.hidden = true;
+    if (d.newPassword !== d.confirmPassword) { err.textContent = "The two new passwords don't match"; err.hidden = false; return; }
+    btn.disabled = true;
+    try {
+      CURRENT_USER = (await authPost("password", d)).user;
+      toast("✅ Password changed");
+      initAccount();
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; btn.disabled = false; }
+  });
+  if (location.hash === "#password" || u.mustChangePassword) $("#password").scrollIntoView();
   loadMyOrders();
 }
 
