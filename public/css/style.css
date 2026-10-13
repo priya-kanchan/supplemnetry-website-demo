@@ -531,3 +531,9 @@ section.block { margin: 36px auto; }
   .fc-wa { padding: 0; width: 56px; }
   .topbar-in { justify-content: center; flex-wrap: wrap; row-gap: 2px; }
 }
+
+/* ===== Show / hide password ===== */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input.pw-in { padding-right: 44px; }
+.pw-eye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.pw-eye:hover, .pw-eye:focus-visible { color: var(--primary); background: var(--primary-lt); outline: none; }

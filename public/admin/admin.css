@@ -198,3 +198,9 @@ select.status-sel { width: auto; padding: 5px 8px; font-size: 13px; }
 .temp-pw { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg); border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin: 12px 0; }
 .temp-pw code { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
 .req { display: inline-block; background: #fff4e0; color: #9a5b00; border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 700; }
+
+/* ===== Show / hide password ===== */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input.pw-in { padding-right: 44px; }
+.pw-eye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.pw-eye:hover, .pw-eye:focus-visible { color: var(--primary); background: var(--primary-lt); outline: none; }
